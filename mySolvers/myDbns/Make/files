@@ -7,6 +7,7 @@ dbnsFlux/hllcLMFlux/hllcLMFlux.C
 dbnsFlux/hllLMFlux/hllLMFlux.C
 dbnsFlux/AUSMplusUpFlux/AUSMplusUpFlux.C
 dbnsFlux/AUSMPWplusFlux/AUSMPWplusFlux.C
+dbnsFlux/AUSMplusMFlux/AUSMplusMFlux.C
 dbnsFlux/rotatedFlux/rotatedFlux.C
 
 numericFlux/numericFlux.C

@@ -37,11 +37,8 @@ namespace Foam
 Foam::AUSMplusMFlux::AUSMplusMFlux(const fvMesh&, const dictionary& dict)
 {
     dictionary mySubDict( dict.subOrEmptyDict("AUSMplusMFluxCoeffs") );
-    beta_    = mySubDict.lookupOrAddDefault("beta", 1.0/8.0);
-    MaInf_   = mySubDict.lookupOrAddDefault("MaInf", 0.3);
-    Kp_      = mySubDict.lookupOrAddDefault("Kp", 0.25);
-    Ku_      = mySubDict.lookupOrAddDefault("Ku", 0.75);
-    sigma_   = mySubDict.lookupOrAddDefault("sigma", 1.0);
+    alpha0_  = mySubDict.lookupOrAddDefault("alpha0", 3.0/16.0);
+    MaInf_   = mySubDict.lookupOrAddDefault("MaInf", 0.1);
     
     if (mySubDict.lookupOrDefault("printCoeffs", false))
         Info << mySubDict << nl;
@@ -64,7 +61,8 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const scalar& CvLeft,
     const scalar& CvRight,
     const vector& Sf,
-    const scalar& magSf
+    const scalar& magSf,
+    const scalar& h
 ) const
 {
     // Step 1: decode left and right:
@@ -100,9 +98,10 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const scalar aHatLeft  = sqr(aStar) / max(aStar, qLeft);
     const scalar aHatRight = sqr(aStar) / max(aStar, -qRight);
     const scalar aTilde = min(aHatLeft, aHatRight);
+    const scalar aTildeSqr = sqr(aTilde)
     const scalar rhoTilde = 0.5*(rhoLeft+rhoRight);
     
-    const scalar sqrMaDash = ((sqr(qLeft)+sqr(qRight))/(2.0*sqr(aTilde))+deltaEF_)/(1+deltaEF_);
+    const scalar sqrMaDash = (sqr(qLeft)+sqr(qRight))/(2.0*sqr(aTilde));
     const scalar sqrMaZero = min(1.0,max(sqrMaDash,sqr(MaInf_)));
     const scalar MaZero    = Foam::sqrt(sqrMaZero);
 
@@ -113,8 +112,8 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const scalar MaRelLeft  = qLeft /aTilde;
     const scalar MaRelRight = qRight/aTilde;
     
-    const scalar magMaRelLeft  = (mag(MaRelLeft) +deltaEF_)/(1+deltaEF_);
-    const scalar magMaRelRight = (mag(MaRelRight)+deltaEF_)/(1+deltaEF_);
+    const scalar magMaRelLeft  = mag(MaRelLeft);
+    const scalar magMaRelRight = mag(MaRelRight);
     
     const scalar Ma1PlusLeft   = 0.5*(MaRelLeft +magMaRelLeft );
     const scalar Ma1MinusRight = 0.5*(MaRelRight-magMaRelRight);
@@ -127,13 +126,21 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const scalar Ma4BetaPlusLeft   = ((magMaRelLeft  >= 1.0) ? Ma1PlusLeft   : (Ma2PlusLeft  *(1.0-16.0*beta_*Ma2MinusLeft)));
     const scalar Ma4BetaMinusRight = ((magMaRelRight >= 1.0) ? Ma1MinusRight : (Ma2MinusRight*(1.0+16.0*beta_*Ma2PlusRight)));
 
+    // qLeft \equiv ULeft
     // $M$ from Eq. 15
-    const scalar M = min(1.0, max(M_L, M_R))
+    const scalar M = min(1.0, max(magMaRelLeft, magMaRelRight));
 
     // $f$ from Eq. 15
-    const scalar f = (1-Foam::cos(pi*M))/2
+    const scalar f = (1-Foam::cos(pi*M))/2;
+
+    // $\delta p$ from Eq. 14
+    const scalar deltaP = pRight-pLeft;
+
+    const scalar h = eval_h_min(pLeft), pRight);
+
         
-    const scalar Mp = -Kp_/fa*max(1.0-sigma_*sqrMaDash,0.0)*(pRight-pLeft)/(rhoTilde*sqr(aTilde));
+    // $M_p$ from Eq. 14
+    const scalar Mp = -0.5*(1-f)*deltaP/(rhoTilde*aTildeSqr)*(1-g)
 
     const scalar P5alphaPlusLeft   = ((magMaRelLeft  >= 1.0) ?
     (Ma1PlusLeft/MaRelLeft)    : (Ma2PlusLeft  *(( 2.0-MaRelLeft) -16.0*alpha*MaRelLeft *Ma2MinusLeft )));
@@ -153,6 +160,43 @@ void Foam::AUSMplusMFlux::evaluateFlux
     rhoUFlux = (0.5*(URelTilde*(rhoULeft+rhoURight)-magURelTilde*(rhoURight-rhoULeft))+pTilde*normalVector)*magSf;
     rhoEFlux = (0.5*(URelTilde*(rhoHLeft+rhoHRight)-magURelTilde*(rhoHRight-rhoHLeft)) + pTilde*qMesh)*magSf;
 
+}
+
+void Foam::AUSMplusMFlux::eval_h_min
+(
+    surfaceScalarField p_L,
+    surfaceScalarField p_R,
+) const
+{
+    // $h$, Pressure sensing variable, Eq. 25
+    const surfaceScalarField h_k = min(p_L/p_R, p_R/p_L);
+    forAll (h_min, cellI)
+    {
+        // Get list of faces of current cell
+        const labelList &cellFaces = mesh_.cells()[cellI]; 
+        // Iterate over all faces of celli
+        forAll (cellFaces, faceI)
+        {
+            // find minimum h_k of the cell; ONLY FOR INTERNAL BOUNDARIES
+            if (cellFaces[faceI] < h_k.size())
+            {
+                h_min[cellI] = min(h_min[cellI], h_k[cellFaces[faceI]]);
+            }
+        }
+    };
+
+     // Eq. 43: interpolate on cell faces
+    const surfaceScalarField h_final
+    (
+        "h_final", 
+        min
+        (
+            fvc::surfaceReconstruct(h_min, own_, RECONSTRUCT_SCALAR_),
+            fvc::surfaceReconstruct(h_min, nei_, RECONSTRUCT_SCALAR_)
+        )
+    );
+
+    return h_final;
 }
 
 

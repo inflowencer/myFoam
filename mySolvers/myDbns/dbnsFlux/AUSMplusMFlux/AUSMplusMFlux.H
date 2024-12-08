@@ -97,13 +97,29 @@ public:
 	const scalar& meshPhi
     ) const;
 
+    // Volume field that stores minimum h_k for the cells surfaces
+    volScalarField h_min
+    (
+        IOobject
+        (
+            "h_min",
+            mesh_.time().timeName(),
+            mesh_
+        ),
+        mesh_,
+        dimensionedScalar
+        (
+            "h_min",
+            dimensionSet(0, 0, 0, 0, 0, 0, 0),
+            1.0
+        )
+    );
+
 private:
   
-    scalar beta_;
+    // AUSM+M flux scheme parameters
+    scalar alpha0_;
     scalar MaInf_;
-    scalar Kp_;
-    scalar Ku_;
-    scalar sigma_;
 };
 
 

@@ -38,6 +38,7 @@ Foam::AUSMplusMFlux::AUSMplusMFlux(const fvMesh&, const dictionary& dict)
 {
     dictionary mySubDict( dict.subOrEmptyDict("AUSMplusMFluxCoeffs") );
     alpha0_  = mySubDict.lookupOrAddDefault("alpha0", 3.0/16.0);
+    beta_    = mySubDict.lookupOrAddDefault("beta", 1.0/8.0);
     MaInf_   = mySubDict.lookupOrAddDefault("MaInf", 0.1);
     
     if (mySubDict.lookupOrDefault("printCoeffs", false))
@@ -89,25 +90,34 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const vector rhoURight = rhoRight*URight;
 
     // Compute qLeft and qRight (q_{l,r} = U_{l,r} \bullet n)
-    const scalar qLeft = (ULeft & normalVector) - qMesh;
-    const scalar qRight = (URight & normalVector) - qMesh;
+    const scalar qLeft     = (ULeft & normalVector) - qMesh;
+    const scalar qRight    = (URight & normalVector) - qMesh;
+    const scalar qLeftSqr  = sqr(qLeft);
+    const scalar qRightSqr = sqr(qRight);
+    const scalar qLeftMag  = mag(qLeft);
+    const scalar qRightMag = mag(qRight);
 
-    const scalar Ht = 0.5*(rhoHLeft/rhoLeft + rhoHRight/rhoRight);
-    
-    const scalar aStar = sqrt(2.0*(kappa-1)/(kappa+1) * Ht);
-    const scalar aHatLeft  = sqr(aStar) / max(aStar, qLeft);
-    const scalar aHatRight = sqr(aStar) / max(aStar, -qRight);
-    const scalar aTilde = min(aHatLeft, aHatRight);
-    const scalar aTildeSqr = sqr(aTilde)
+
+    // Eq. 29
+    const scalar sqrULeft  = magSqr(ULeft);
+    const scalar sqrURight = magSqr(URight);
+    const scalar hnormal   = 0.5*(rhoHLeft/rhoLeft-0.5*sqrULeft+rhoHRight/rhoRight-0.5*sqrURight);
+    const scalar aStar     = sqrt(2.0*(kappa-1)/(kappa+1) * hnormal);
+    const scalar aStarSqr  = sqr(aStar);
+    // If 1/2(ULeft + URight) >= 0
+    const scalar qLeftRight = 0.5*(qLeft+qRight);
+    const scalar aTilde    = (qLeftRight  >= 0.0) ? aStarSqr/(max(qLeftMag, aStar)) : aStarSqr/(max(qRightMag, aStar));
+    const scalar aTildeSqr = sqr(aTilde);
+
     const scalar rhoTilde = 0.5*(rhoLeft+rhoRight);
     
     const scalar sqrMaDash = (sqr(qLeft)+sqr(qRight))/(2.0*sqr(aTilde));
     const scalar sqrMaZero = min(1.0,max(sqrMaDash,sqr(MaInf_)));
     const scalar MaZero    = Foam::sqrt(sqrMaZero);
+    const scalar sqrMaInf  = sqr(MaInf_)
 
     const scalar fa = MaZero*(2.0-MaZero);
 
-    const scalar alpha = 3.0/16.0*(-4.0+5.0*sqr(fa));
     
     const scalar MaRelLeft  = qLeft /aTilde;
     const scalar MaRelRight = qRight/aTilde;
@@ -126,34 +136,44 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const scalar Ma4BetaPlusLeft   = ((magMaRelLeft  >= 1.0) ? Ma1PlusLeft   : (Ma2PlusLeft  *(1.0-16.0*beta_*Ma2MinusLeft)));
     const scalar Ma4BetaMinusRight = ((magMaRelRight >= 1.0) ? Ma1MinusRight : (Ma2MinusRight*(1.0+16.0*beta_*Ma2PlusRight)));
 
+    // $\psi$ from Eq. 6 (Chen, 2020)
+    const scalar P5alphaPlusLeft   = ((magMaRelLeft  >= 1.0) ?
+    (Ma1PlusLeft/MaRelLeft)    : (Ma2PlusLeft  *(( 2.0-MaRelLeft) -16.0*alpha0_*MaRelLeft *Ma2MinusLeft )));
+    const scalar P5alphaMinusRight = ((magMaRelRight >= 1.0) ?
+    (Ma1MinusRight/MaRelRight) : (Ma2MinusRight*((-2.0-MaRelRight)+16.0*alpha0_*MaRelRight*Ma2PlusRight)));
+
     // qLeft \equiv ULeft
     // $M$ from Eq. 15
     const scalar M = min(1.0, max(magMaRelLeft, magMaRelRight));
 
     // $f$ from Eq. 15
-    const scalar f = (1-Foam::cos(pi*M))/2;
+    const scalar f = (1-Foam::cos(M_PI*M))/2;
 
     // $\delta p$ from Eq. 14
     const scalar deltaP = pRight-pLeft;
 
-    const scalar h = eval_h_min(pLeft), pRight);
+    // $h$ from Eq. 25
+    const scalar h = eval_h_min(pLeft, pRight);
+    const scalar g = 0.5*(1+Foam::cos(M_PI*h))
 
-        
     // $M_p$ from Eq. 14
     const scalar Mp = -0.5*(1-f)*deltaP/(rhoTilde*aTildeSqr)*(1-g)
 
-    const scalar P5alphaPlusLeft   = ((magMaRelLeft  >= 1.0) ?
-    (Ma1PlusLeft/MaRelLeft)    : (Ma2PlusLeft  *(( 2.0-MaRelLeft) -16.0*alpha*MaRelLeft *Ma2MinusLeft )));
-    const scalar P5alphaMinusRight = ((magMaRelRight >= 1.0) ?
-    (Ma1MinusRight/MaRelRight) : (Ma2MinusRight*((-2.0-MaRelRight)+16.0*alpha*MaRelRight*Ma2PlusRight)));
-    
-    const scalar pU = -Ku_*P5alphaPlusLeft*P5alphaMinusRight*(rhoLeft+rhoRight)*(fa*aTilde)*(qRight-qLeft);
-    
+    // $f_0$ from Eq. 20
+    const scalar f0 = min(1.0, max(f, sqrMaInf))
+
+    // $p_s$ from Eq. 19
+    const scalar ps = 
+      0.5*(pLeft+pRight)
+    + (P5alphaPlusLeft - P5alphaMinusRight)*0.5*(pLeft-Pright)
+    + f0*(P5alphaPlusLeft+P5alphaMinusRight-1)*0.5*(pLeft+pRight);
+
+    const vector pU = -g*(kappa*(pLeft+pRight))/(2*aTilde)*P5alphaPlusLeft*P5alphaMinusRight*(URight-ULeft);
+
     const scalar MaRelTilde = Ma4BetaPlusLeft + Ma4BetaMinusRight + Mp;
-    const scalar pTilde = pLeft*P5alphaPlusLeft + pRight*P5alphaMinusRight + pU;
-    
     const scalar URelTilde = MaRelTilde*aTilde;
     const scalar magURelTilde = mag(MaRelTilde)*aTilde;
+
     // There is a typo in Luo et. al, J. Comp. Physics 194 (2004), Chap 4.2 Eq. 4.8
     // refer to the origial Paper from Liou, J. Comp. Physics 129 (1996), Chap4, Eq. 42
     rhoFlux  = (0.5*(URelTilde*(rhoLeft +rhoRight) -magURelTilde*(rhoRight -rhoLeft)))*magSf;
@@ -162,7 +182,7 @@ void Foam::AUSMplusMFlux::evaluateFlux
 
 }
 
-void Foam::AUSMplusMFlux::eval_h_min
+Foam::surfaceScalarField AUSMplusMFlux::eval_h_min
 (
     surfaceScalarField p_L,
     surfaceScalarField p_R,

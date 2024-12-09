@@ -139,7 +139,7 @@ void Foam::numericFlux::computeFlux()
             Cv[own],       Cv[nei],
             Sf[faceI],
             magSf[faceI],
-	    mshPhi[faceI]
+            mshPhi[faceI]
         );
     }
 
@@ -213,7 +213,7 @@ void Foam::numericFlux::computeFlux()
                     pCv[facei], pCv[facei],
                     pSf[facei],
                     pMagSf[facei],
-		    pMshPhi[facei]
+                    pMshPhi[facei]
                 );
             }
         }

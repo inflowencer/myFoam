@@ -94,7 +94,7 @@ public:
         const scalar& CvRight,
         const vector& Sf,
         const scalar& magSf,
-	const scalar& meshPhi
+        const scalar& meshPhi
     ) const;
 
     // Volume field that stores minimum h_k for the cells surfaces
@@ -119,7 +119,14 @@ private:
   
     // AUSM+M flux scheme parameters
     scalar alpha0_;
+    scalar beta_;
     scalar MaInf_;
+
+    surfaceScalarField eval_h_min
+    (
+        surfaceScalarField p_R,
+        surfaceScalarField p_L
+    );
 };
 
 

@@ -37,9 +37,8 @@ namespace Foam
 Foam::AUSMplusMFlux::AUSMplusMFlux(const fvMesh&, const dictionary& dict)
 {
     dictionary mySubDict( dict.subOrEmptyDict("AUSMplusMFluxCoeffs") );
-    alpha0_  = mySubDict.lookupOrAddDefault("alpha0", 3.0/16.0);
-    beta_    = mySubDict.lookupOrAddDefault("beta", 1.0/8.0);
-    MaInf_   = mySubDict.lookupOrAddDefault("MaInf", 0.1);
+    sqrMachInf_ = mySubDict.lookupOrDefault("sqrMachInf", 0.01);
+    alpha0_ = mySubDict.lookupOrDefault("alpha0", 3 / 16);
     
     if (mySubDict.lookupOrDefault("printCoeffs", false))
         Info << mySubDict << nl;
@@ -63,14 +62,13 @@ void Foam::AUSMplusMFlux::evaluateFlux
     const scalar& CvRight,
     const vector& Sf,
     const scalar& magSf,
+    const scalar& meshPhi,
     const scalar& h
 ) const
 {
     // Step 1: decode left and right:
     // normal vector
     const vector normalVector = Sf/magSf;
-    
-    const scalar qMesh = meshPhi / magSf;
 
     // Ratio of specific heat capacities
     const scalar kappaLeft = (RLeft + CvLeft)/CvLeft;
@@ -80,143 +78,72 @@ void Foam::AUSMplusMFlux::evaluateFlux
     // Density
     const scalar rhoLeft = pLeft/(RLeft*TLeft);
     const scalar rhoRight = pRight/(RRight*TRight);
-
+    const scalar rho_mean = 0.5*(rhoLeft + rhoRight);
     // DensityTotalEnthalpy
     const scalar rhoHLeft  = rhoLeft*(CvLeft*TLeft + 0.5*magSqr(ULeft)) + pLeft;
     const scalar rhoHRight = rhoRight*(CvRight*TRight + 0.5*magSqr(URight)) + pRight;
 
-    // DensityVelocity
-    const vector rhoULeft = rhoLeft*ULeft;
-    const vector rhoURight = rhoRight*URight;
-
-    // Compute qLeft and qRight (q_{l,r} = U_{l,r} \bullet n)
-    const scalar qLeft     = (ULeft & normalVector) - qMesh;
-    const scalar qRight    = (URight & normalVector) - qMesh;
-    const scalar qLeftSqr  = sqr(qLeft);
-    const scalar qRightSqr = sqr(qRight);
-    const scalar qLeftMag  = mag(qLeft);
-    const scalar qRightMag = mag(qRight);
-
-
-    // Eq. 29
-    const scalar sqrULeft  = magSqr(ULeft);
-    const scalar sqrURight = magSqr(URight);
-    const scalar hnormal   = 0.5*(rhoHLeft/rhoLeft-0.5*sqrULeft+rhoHRight/rhoRight-0.5*sqrURight);
-    const scalar aStar     = sqrt(2.0*(kappa-1)/(kappa+1) * hnormal);
-    const scalar aStarSqr  = sqr(aStar);
-    // If 1/2(ULeft + URight) >= 0
-    const scalar qLeftRight = 0.5*(qLeft+qRight);
-    const scalar aTilde    = (qLeftRight  >= 0.0) ? aStarSqr/(max(qLeftMag, aStar)) : aStarSqr/(max(qRightMag, aStar));
-    const scalar aTildeSqr = sqr(aTilde);
-
-    const scalar rhoTilde = 0.5*(rhoLeft+rhoRight);
+    const scalar u_normal_L = (ULeft & normalVector);
+    const scalar u_normal_R = (URight & normalVector);
     
-    const scalar sqrMaDash = (sqr(qLeft)+sqr(qRight))/(2.0*sqr(aTilde));
-    const scalar sqrMaZero = min(1.0,max(sqrMaDash,sqr(MaInf_)));
-    const scalar MaZero    = Foam::sqrt(sqrMaZero);
-    const scalar sqrMaInf  = sqr(MaInf_)
-
-    const scalar fa = MaZero*(2.0-MaZero);
+    const scalar u_tangential_L = mag(ULeft - (ULeft & normalVector) * normalVector);
+    const scalar u_tangential_R = mag(URight - (URight & normalVector) * normalVector);
 
     
-    const scalar MaRelLeft  = qLeft /aTilde;
-    const scalar MaRelRight = qRight/aTilde;
+    const scalar h_L = rhoHLeft/rhoLeft;
+    const scalar h_R = rhoHRight/rhoRight;
     
-    const scalar magMaRelLeft  = mag(MaRelLeft);
-    const scalar magMaRelRight = mag(MaRelRight);
+    // calculate normal component of enthalpy
+    const scalar h_normal = 0.5 * (h_L - 0.5 * sqr(u_tangential_L) + h_R - 0.5 * sqr(u_tangential_R));
+
+
+    const scalar sqr_c_star = 2.0 * (kappa - 1.0) / (kappa + 1.0) * h_normal;
     
-    const scalar Ma1PlusLeft   = 0.5*(MaRelLeft +magMaRelLeft );
-    const scalar Ma1MinusRight = 0.5*(MaRelRight-magMaRelRight);
+    const scalar u_normal_mean = 0.5 * (u_normal_L + u_normal_R);
+
+    const scalar c_face = pos0(u_normal_mean) * (sqr_c_star / max(mag(u_normal_L), sqrt(sqr_c_star))) + neg(u_normal_mean) * (sqr_c_star / max(mag(u_normal_R), sqrt(sqr_c_star)));
+
+    const scalar Mach_L = u_normal_L / c_face;
+    const scalar Mach_R = u_normal_R / c_face;
+    const scalar magnitude_Mach_L = mag(Mach_L);
+    const scalar magnitude_Mach_R = mag(Mach_R);
     
-    const scalar Ma2PlusLeft   =  0.25*sqr(MaRelLeft +1.0);
-    const scalar Ma2PlusRight  =  0.25*sqr(MaRelRight+1.0);
-    const scalar Ma2MinusLeft  = -0.25*sqr(MaRelLeft -1.0);
-    const scalar Ma2MinusRight = -0.25*sqr(MaRelRight-1.0);
+    const scalar mach = min(1.0, max(magnitude_Mach_L, magnitude_Mach_R));
     
-    const scalar Ma4BetaPlusLeft   = ((magMaRelLeft  >= 1.0) ? Ma1PlusLeft   : (Ma2PlusLeft  *(1.0-16.0*beta_*Ma2MinusLeft)));
-    const scalar Ma4BetaMinusRight = ((magMaRelRight >= 1.0) ? Ma1MinusRight : (Ma2MinusRight*(1.0+16.0*beta_*Ma2PlusRight)));
+    const scalar PI_ = constant::mathematical::pi;
+    const scalar f = 0.5 * (1 - cos(PI_ * mach));
 
-    // $\psi$ from Eq. 6 (Chen, 2020)
-    const scalar P5alphaPlusLeft   = ((magMaRelLeft  >= 1.0) ?
-    (Ma1PlusLeft/MaRelLeft)    : (Ma2PlusLeft  *(( 2.0-MaRelLeft) -16.0*alpha0_*MaRelLeft *Ma2MinusLeft )));
-    const scalar P5alphaMinusRight = ((magMaRelRight >= 1.0) ?
-    (Ma1MinusRight/MaRelRight) : (Ma2MinusRight*((-2.0-MaRelRight)+16.0*alpha0_*MaRelRight*Ma2PlusRight)));
+    const scalar f_0 = min(1.0, max(f, sqrMachInf_));
 
-    // qLeft \equiv ULeft
-    // $M$ from Eq. 15
-    const scalar M = min(1.0, max(magMaRelLeft, magMaRelRight));
+    const scalar alpha = alpha0_;
 
-    // $f$ from Eq. 15
-    const scalar f = (1-Foam::cos(M_PI*M))/2;
+    const scalar g = 0.5 * (1.0 + cos(PI_ * h));
 
-    // $\delta p$ from Eq. 14
-    const scalar deltaP = pRight-pLeft;
+    const scalar p_plus_L = pos0(magnitude_Mach_L - 1.0) * 0.5 * (1.0 + sign(Mach_L)) + neg(magnitude_Mach_L - 1.0) * (0.25 * sqr(Mach_L + 1.0) * (2.0 - Mach_L) + alpha * Mach_L * sqr(sqr(Mach_L) - 1.0));
+    
+    const scalar p_minus_R = pos0(magnitude_Mach_R - 1.0) * 0.5 * (1.0 - sign(Mach_R)) + neg(magnitude_Mach_R - 1.0) * (0.25 * sqr(Mach_R - 1.0) * (2.0 + Mach_R) - alpha * Mach_R * sqr(sqr(Mach_R) - 1.0));
+    
+    const scalar p_mean = 0.5 * (pLeft + pRight);
+    const scalar dp = (p_plus_L - p_minus_R) * 0.5 * (pLeft - pRight) + f_0 * ((p_plus_L + p_minus_R - 1) * p_mean);
 
-    // $h$ from Eq. 25
-    const scalar h = eval_h_min(pLeft, pRight);
-    const scalar g = 0.5*(1+Foam::cos(M_PI*h))
+    const scalar ps = p_mean + dp;
 
-    // $M_p$ from Eq. 14
-    const scalar Mp = -0.5*(1-f)*deltaP/(rhoTilde*aTildeSqr)*(1-g)
+    const vector pu = -g * kappa * p_mean / c_face * p_plus_L * p_minus_R * (URight - ULeft);
 
-    // $f_0$ from Eq. 20
-    const scalar f0 = min(1.0, max(f, sqrMaInf))
+    const vector p12 = ps * normalVector + pu;
 
-    // $p_s$ from Eq. 19
-    const scalar ps = 
-      0.5*(pLeft+pRight)
-    + (P5alphaPlusLeft - P5alphaMinusRight)*0.5*(pLeft-Pright)
-    + f0*(P5alphaPlusLeft+P5alphaMinusRight-1)*0.5*(pLeft+pRight);
+    const scalar Mach_plus_L = pos0(magnitude_Mach_L - 1.0) * 0.5 * (Mach_L + magnitude_Mach_L) + neg(magnitude_Mach_L - 1.0) * (0.25 * sqr(Mach_L + 1.0) + 0.125 * sqr(sqr(Mach_L) - 1.0));
+    const scalar Mach_minus_R = pos0(magnitude_Mach_R - 1.0) * 0.5 * (Mach_R - magnitude_Mach_R) + neg(magnitude_Mach_R - 1.0) * (-0.25 * sqr(Mach_R - 1.0) - 0.125 * sqr(sqr(Mach_R) - 1.0));
 
-    const vector pU = -g*(kappa*(pLeft+pRight))/(2*aTilde)*P5alphaPlusLeft*P5alphaMinusRight*(URight-ULeft);
+    const scalar Mp = -0.5 * (1.0 - f) * (pRight - pLeft) / rho_mean / sqr(c_face) * (1.0 - g);
 
-    const scalar MaRelTilde = Ma4BetaPlusLeft + Ma4BetaMinusRight + Mp;
-    const scalar URelTilde = MaRelTilde*aTilde;
-    const scalar magURelTilde = mag(MaRelTilde)*aTilde;
+    const scalar Mach_1_2 = Mach_plus_L + Mach_minus_R + Mp;
 
-    // There is a typo in Luo et. al, J. Comp. Physics 194 (2004), Chap 4.2 Eq. 4.8
-    // refer to the origial Paper from Liou, J. Comp. Physics 129 (1996), Chap4, Eq. 42
-    rhoFlux  = (0.5*(URelTilde*(rhoLeft +rhoRight) -magURelTilde*(rhoRight -rhoLeft)))*magSf;
-    rhoUFlux = (0.5*(URelTilde*(rhoULeft+rhoURight)-magURelTilde*(rhoURight-rhoULeft))+pTilde*normalVector)*magSf;
-    rhoEFlux = (0.5*(URelTilde*(rhoHLeft+rhoHRight)-magURelTilde*(rhoHRight-rhoHLeft)) + pTilde*qMesh)*magSf;
+    const scalar mdot = c_face * Mach_1_2 * (rhoLeft * pos0(Mach_1_2) + rhoRight * neg(Mach_1_2));
 
-}
-
-Foam::surfaceScalarField AUSMplusMFlux::eval_h_min
-(
-    surfaceScalarField p_L,
-    surfaceScalarField p_R,
-) const
-{
-    // $h$, Pressure sensing variable, Eq. 25
-    const surfaceScalarField h_k = min(p_L/p_R, p_R/p_L);
-    forAll (h_min, cellI)
-    {
-        // Get list of faces of current cell
-        const labelList &cellFaces = mesh_.cells()[cellI]; 
-        // Iterate over all faces of celli
-        forAll (cellFaces, faceI)
-        {
-            // find minimum h_k of the cell; ONLY FOR INTERNAL BOUNDARIES
-            if (cellFaces[faceI] < h_k.size())
-            {
-                h_min[cellI] = min(h_min[cellI], h_k[cellFaces[faceI]]);
-            }
-        }
-    };
-
-     // Eq. 43: interpolate on cell faces
-    const surfaceScalarField h_final
-    (
-        "h_final", 
-        min
-        (
-            fvc::surfaceReconstruct(h_min, own_, RECONSTRUCT_SCALAR_),
-            fvc::surfaceReconstruct(h_min, nei_, RECONSTRUCT_SCALAR_)
-        )
-    );
-
-    return h_final;
+    rhoFlux = magSf * mdot;
+    rhoUFlux = magSf * (0.5 * (mdot + mag(mdot)) * ULeft + 0.5 * (mdot - mag(mdot)) * URight + p12);
+    rhoEFlux = magSf * (0.5 * (mdot + mag(mdot)) * h_L + 0.5 * (mdot - mag(mdot)) * h_R);
 }
 
 

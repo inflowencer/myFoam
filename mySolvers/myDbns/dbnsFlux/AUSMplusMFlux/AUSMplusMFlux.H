@@ -22,23 +22,21 @@ License
     along with foam-extend.  If not, see <http://www.gnu.org/licenses/>.
 
 Application
-    ausmPlusUpFlux
+    ausmPlusMFlux
 
 Description
-    AUSM+M flux class, computes numerical fluxes based on AUSM+M scheme.  Uses
-    primitive variables as input and gives back conservative numerical fluxes.
+    AUSM+M flux scheme. From:
 
-    Shu-sheng Chen, Fang-jie Cai, Hai-chao Xue, Ning Wang, and Chao Yan, "An
-    improved AUSM-family scheme with robustness and accuracy for all Mach number
-    flows", Applied Mathematical Modelling 77 (2020): 1065-1081,
-    doi.org/10.1016/j.apm.2019.09.005.
+    "An improved AUSM-family scheme with robustness and accuracy for all Mach number flows",
+    Chen, Shu-sheng and Cai, Fang-jie and Xue, Hai-chao and  Wang, Ning and Yan, Chao,
+    Applied Mathematical Modelling (77), doi.org/10.1016/j.apm.2019.09.005, 2020.
 
-Author
-    Maximilian Maigler
-    # Rewritten by Jiri Furst
+Author(s)
+    Adam Tater         - Major development.
+    Maximilian Maigler - Minor improvements and testing.
 
 SourceFiles
-    AUSMplusMFlux.H
+    AUSMplusUpFlux.H
 
 \*---------------------------------------------------------------------------*/
 
@@ -53,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class AUSMplusMFlux Declaration
+                           Class AUSMplusUpFlux Declaration
 \*---------------------------------------------------------------------------*/
 
 class AUSMplusMFlux: public dbnsFlux
@@ -94,39 +92,14 @@ public:
         const scalar& CvRight,
         const vector& Sf,
         const scalar& magSf,
-        const scalar& meshPhi
+        const scalar& meshPhi,
+        const scalar& h
     ) const;
-
-    // Volume field that stores minimum h_k for the cells surfaces
-    volScalarField h_min
-    (
-        IOobject
-        (
-            "h_min",
-            mesh_.time().timeName(),
-            mesh_
-        ),
-        mesh_,
-        dimensionedScalar
-        (
-            "h_min",
-            dimensionSet(0, 0, 0, 0, 0, 0, 0),
-            1.0
-        )
-    );
 
 private:
   
-    // AUSM+M flux scheme parameters
+    scalar sqrMachInf_;
     scalar alpha0_;
-    scalar beta_;
-    scalar MaInf_;
-
-    surfaceScalarField eval_h_min
-    (
-        surfaceScalarField p_R,
-        surfaceScalarField p_L
-    );
 };
 
 

@@ -36,7 +36,7 @@ Author(s)
     Maximilian Maigler - Minor improvements and testing.
 
 SourceFiles
-    AUSMplusUpFlux.H
+    AUSMplusMFlux.H
 
 \*---------------------------------------------------------------------------*/
 
@@ -51,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class AUSMplusUpFlux Declaration
+                           Class AUSMplusMFlux Declaration
 \*---------------------------------------------------------------------------*/
 
 class AUSMplusMFlux: public dbnsFlux

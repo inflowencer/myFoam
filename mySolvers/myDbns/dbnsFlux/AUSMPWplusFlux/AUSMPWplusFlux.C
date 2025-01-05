@@ -62,7 +62,8 @@ void Foam::AUSMPWplusFlux::evaluateFlux
     const scalar& CvRight,
     const vector& Sf,
     const scalar& magSf,
-    const scalar& meshPhi
+    const scalar& meshPhi,
+    const scalar& h
 ) const
 {
     // Step 1: decode left and right:

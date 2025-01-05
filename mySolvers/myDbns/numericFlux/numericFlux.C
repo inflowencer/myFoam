@@ -49,6 +49,20 @@ Foam::numericFlux::numericFlux
     T_(T),
     thermo_(thermo),
     MRF_(MRF),
+    hMin_
+    (
+        volScalarField
+        (
+            IOobject
+            (
+                "hMin",
+                mesh_.time().timeName(),
+                mesh_
+            ),
+            mesh_,
+            dimensionedScalar("hMin", dimensionSet(0, 0, 0, 0, 0, 0, 0), 1.0)
+        )
+    ),
     rhoFlux_
     (
         IOobject
@@ -119,6 +133,24 @@ void Foam::numericFlux::computeFlux()
 
     surfaceScalarField T_pos( interpolate(T_, pos_) );
     surfaceScalarField T_neg( interpolate(T_, neg_) );
+    
+    
+    const surfaceScalarField h_k("h_k", min(p_pos / p_neg, p_neg / p_pos));
+
+    forAll(hMin_, celli)
+    {
+      const labelList &cellFaces = mesh_.cells()[celli]; // get list of faces of current cell 
+
+            forAll(cellFaces, facei)
+            {
+                if (cellFaces[facei] < h_k.size())
+                {
+                    hMin_[celli] = min(hMin_[celli], h_k[cellFaces[facei]]);
+                }
+            }
+    };
+
+    const surfaceScalarField h43("h43", min(interpolate(hMin_, pos_), interpolate(hMin_, neg_)));
 
     // Calculate fluxes at internal faces
     forAll (owner, faceI)
@@ -139,7 +171,8 @@ void Foam::numericFlux::computeFlux()
             Cv[own],       Cv[nei],
             Sf[faceI],
             magSf[faceI],
-            mshPhi[faceI]
+						mshPhi[faceI],
+            h43[faceI]
         );
     }
 
@@ -188,7 +221,8 @@ void Foam::numericFlux::computeFlux()
                     pCv[facei], pCv[facei],
                     pSf[facei],
                     pMagSf[facei],
-                    pMshPhi[facei]
+                    pMshPhi[facei],
+                    h43[facei]
                 );
             }
         }
@@ -213,7 +247,8 @@ void Foam::numericFlux::computeFlux()
                     pCv[facei], pCv[facei],
                     pSf[facei],
                     pMagSf[facei],
-                    pMshPhi[facei]
+										pMshPhi[facei],
+                    h43[facei]
                 );
             }
         }
@@ -247,5 +282,5 @@ Foam::tmp<Foam::surfaceScalarField> numericFlux::meshPhi() const
     
 }
 
-
 // ************************************************************************* //
+

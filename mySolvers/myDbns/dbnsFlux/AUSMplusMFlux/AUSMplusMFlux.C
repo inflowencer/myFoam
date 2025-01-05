@@ -36,9 +36,9 @@ namespace Foam
 
 Foam::AUSMplusMFlux::AUSMplusMFlux(const fvMesh&, const dictionary& dict)
 {
-    dictionary mySubDict( dict.subOrEmptyDict("AUSMplusMFluxCoeffs") );
+    dictionary    mySubDict( dict.subOrEmptyDict("AUSMplusMFluxCoeffs") );
     sqrMachInf_ = mySubDict.lookupOrDefault("sqrMachInf", 0.01);
-    alpha0_ = mySubDict.lookupOrDefault("alpha0", 3 / 16);
+    alpha0_     = mySubDict.lookupOrDefault("alpha0", 3.0/16.0);
     
     if (mySubDict.lookupOrDefault("printCoeffs", false))
         Info << mySubDict << nl;
@@ -141,7 +141,7 @@ void Foam::AUSMplusMFlux::evaluateFlux
 
     const scalar mdot = c_face * Mach_1_2 * (rhoLeft * pos0(Mach_1_2) + rhoRight * neg(Mach_1_2));
 
-    rhoFlux = magSf * mdot;
+    rhoFlux  = magSf * mdot;
     rhoUFlux = magSf * (0.5 * (mdot + mag(mdot)) * ULeft + 0.5 * (mdot - mag(mdot)) * URight + p12);
     rhoEFlux = magSf * (0.5 * (mdot + mag(mdot)) * h_L + 0.5 * (mdot - mag(mdot)) * h_R);
 }

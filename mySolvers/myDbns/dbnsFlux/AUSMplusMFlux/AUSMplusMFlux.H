@@ -59,7 +59,13 @@ class AUSMplusMFlux: public dbnsFlux
 private:
     AUSMplusMFlux();
     AUSMplusMFlux(const AUSMplusMFlux&);
+
+    // Boolean flag for pressure sensing
+    bool requiresPressureSensing_;
   
+    scalar sqrMachInf_;
+    scalar alpha0_;
+
 public:
     TypeName("AUSMplusMFlux");
 
@@ -96,10 +102,6 @@ public:
         const scalar& h
     ) const;
 
-private:
-  
-    scalar sqrMachInf_;
-    scalar alpha0_;
 };
 
 

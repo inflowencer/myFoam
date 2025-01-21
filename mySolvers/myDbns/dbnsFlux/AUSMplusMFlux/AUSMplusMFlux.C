@@ -39,6 +39,7 @@ Foam::AUSMplusMFlux::AUSMplusMFlux(const fvMesh&, const dictionary& dict)
     dictionary    mySubDict( dict.subOrEmptyDict("AUSMplusMFluxCoeffs") );
     sqrMachInf_ = mySubDict.lookupOrDefault("sqrMachInf", 0.01);
     alpha0_     = mySubDict.lookupOrDefault("alpha0", 3.0/16.0);
+    requiresPressureSensing_ = true;
     
     if (mySubDict.lookupOrDefault("printCoeffs", false))
         Info << mySubDict << nl;

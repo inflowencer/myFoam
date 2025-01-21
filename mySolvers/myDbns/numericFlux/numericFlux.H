@@ -83,9 +83,9 @@ class numericFlux
     
     //- Reference to MRFZones
     const MRFZoneList& MRF_;
-    
+
     volScalarField hMin_;
-    
+
     // Fluxes
     
     //- Density flux

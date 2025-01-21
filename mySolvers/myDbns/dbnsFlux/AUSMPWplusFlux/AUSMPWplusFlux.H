@@ -60,6 +60,9 @@ class AUSMPWplusFlux: public dbnsFlux
 private:
     AUSMPWplusFlux();
     AUSMPWplusFlux(const AUSMPWplusFlux&);
+
+    // Boolean flag for pressure sensing
+    bool requiresPressureSensing_;
   
 public:
     TypeName("AUSMPWplusFlux");
